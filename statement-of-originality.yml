@@ -12,6 +12,10 @@ declaration: >-
 
 # add as many "url+licence+comment" entries as necessary
 # (or remove it altogether if you haven't used any external code)
+code:
+  - comment: Wave code derived from assignment 2 part 1 (u6947396)
+    url: https://gitlab.cecs.anu.edu.au/u6947396/comp2300-2020-assignment-2/blob/part-1/src/main.S
+    licence: N/A
 
 
 # add as many "url+licence+comment" entries as necessary
