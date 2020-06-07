@@ -7,4 +7,8 @@
 
 # MAKE SURE this is filled out and UP TO DATE come submission time
 connections:
-  - 
+  # uses recommended pins
+  # note on/off from PE14 (sender) to PD0 (receiver)
+  # pitch change from PE15 (sender) to PB3 (receiver)
+  - PE14 -> PD0
+  - PE15 -> PB3
