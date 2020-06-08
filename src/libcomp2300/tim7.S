@@ -111,7 +111,6 @@ TIM7_IRQHandler:
 
   ldr r0, =sender_status
   ldr r1, =sender_song
-  ldrb r4, [r0, 1]       @ current pitch index in r4
   ldrb r5, [r0]          @ current offset in r5
   ldrb r6, [r1]          @ song length in r6
 
@@ -120,36 +119,38 @@ TIM7_IRQHandler:
   mov r5, 1 @ return to beginning of song if length has been reached
 
 get_note:
-  ldrb r8, [r1, r5]      @ current note
-  bic r7, r8, 0b10000000 @ target pitch index in r7
-  lsr r8, 7              @ on/off in r8
-  add r5, 1
-  strb r5, [r0] @ increment current note
+  ldrh r8, [r1, r5]      @ current note in r8
+  mov r4, 0              @ current bit index in r4
+  add r5, 2
+  strb r5, [r0] @ increment current offset
 
-  @ send on/off signal
-  cmp r8, 0
-  beq send_off
-send_on:
-  GPIOx_ODR_set E, 14 @ on
-  b change_pitch
-send_off:
-  GPIOx_ODR_clear E, 14 @ off
-  b store_pitch
+  @ set control line (start transmitting)
+  GPIOx_ODR_set E, 14
 
-change_pitch:
-  @ increment pitch until it equals target
-  cmp r4, r7
-  beq store_pitch
-  GPIOx_ODR_set E, 15 @ send rising edge to increment pitch index (GPIO has higher priority)
-  GPIOx_ODR_clear E, 15 
-  cmp r4, 7
-  ITE GE @ increment if < 7, otherwise return to initial index
-  movge r4, 0
-  addlt r4, 1
-  b change_pitch
-store_pitch:
-  ldr r0, =sender_status
-  strb r4, [r0, 1] @ store new pitch index
+loop_send:
+  cmp r4, 16 @ check if all bits have been sent
+  bge finish_sending
+  GPIOx_ODR_clear E, 15 @ clear clock
+  @ get bit to send
+  mov r0, 1
+  lsl r0, r4
+  and r0, r8
+  lsr r0, r4
+  cmp r0, 0 @ check of 0 or 1
+  bne send_one
+send_zero:
+  GPIOx_ODR_clear E, 13 @ send 0
+  b continue_loop_send
+send_one:
+  GPIOx_ODR_set E, 13 @ send 1
+continue_loop_send:
+  GPIOx_ODR_set E, 15 @ set clock for read
+  add r4, 1 @ increment current bit index
+  b loop_send
+
+finish_sending:
+  @ clear control line (finish transmitting)
+  GPIOx_ODR_clear E, 14
   
   @ Clear interrupt (Section 29.4.4)
   ldr r0, =ADR_TIM7

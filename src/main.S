@@ -3,8 +3,9 @@
 .include "libcomp2300/macros.S"
 
 
-@ note on/off from PE14 (sender) to PD0 (receiver)
-@ pitch change from PE15 (sender) to PB3 (receiver)
+@ data from PE13 (sender) to PH1 (receiver)
+@ control from PE14 (sender) to PD0 (receiver)
+@ clock from PE15 (sender) to PB3 (receiver)
 
 @ --receiver--
 .type main, %function
@@ -22,21 +23,25 @@ main:
   GPIOx_clock_enable B
   GPIOx_clock_enable D
   GPIOx_clock_enable E
+  GPIOx_clock_enable H
 
   @ GPIO setup
-  GPIO_configure_output_pin E, 14   @ note on/off sender: PE14
-  GPIO_configure_input_pin_it D, 0  @ note on/off receiver: PD0
+  GPIO_configure_output_pin E, 13   @ data sender: PE13
+  GPIO_configure_input_pin H, 1     @ data receiver: PH1
+  GPIO_configure_output_pin E, 14   @ control sender: PE14
+  GPIO_configure_input_pin_it D, 0  @ control receiver: PD0
   EXTI_set_rising_edge_trigger 0
   EXTI_set_falling_edge_trigger 0
   NVIC_set ISER 6
-  GPIO_configure_output_pin E, 15   @ pitch change sender: PE15
-  GPIO_configure_input_pin_it B, 3  @ pitch change receiver: PB3
+  GPIO_configure_output_pin E, 15   @ clock sender: PE15
+  GPIO_configure_input_pin_it B, 3  @ clock receiver: PB3
   EXTI_set_rising_edge_trigger 3
   NVIC_set ISER 9
 
-  @ should be at 0 initially
+  @ initial values
+  GPIOx_ODR_clear E, 13
   GPIOx_ODR_clear E, 14
-  GPIOx_ODR_clear E, 15
+  GPIOx_ODR_set E, 15
 
   @ timer set to 0.25 between interrupts
   mov r0, #10000
@@ -44,8 +49,7 @@ main:
   bl tim7_init
 
   mov r4, 0 @ last value of sample in r4
-  ldr r5, =receiver_status @ memory address of receiver status in r5
-  ldr r6, =receiver_pitch_sequence @ memory address of pitch sequence in r6
+  ldr r5, =receiver_current @ memory address of receiver status in r5
  
   b loop
 .size main, .-main
@@ -53,14 +57,10 @@ main:
 loop:
   nop
 
-  @ get next receiver_status
-  ldrb r2, [r5]
-  bic r1, r2, 0b10000000 @ pitch index
-  lsl r1, 1
-  ldrh r1, [r6, r1] @ frequency from pitch sequence
-  lsr r2, 7 @ on/off in most significant bit
+  @ get receiver current frequency
+  ldrh r1, [r5]
 
-  cmp r2, 0 @ check on/off
+  cmp r1, 0 @ check on/off
   beq loop_delay
   bl play_note_sawtooth @ on
   mov r4, r0
@@ -71,42 +71,60 @@ loop_delay: @ off
   bl delay
   b loop
 
-@ note on/off change detected
+@ control change detected
 .type EXTI0_IRQHandler, %function
 EXTI0_IRQHandler:
   push {r4-r11, lr}
 
+  @ update current note with received bits from next note once completed
+  ldr r4, =receiver_next
+  ldr r5, =receiver_current
+  ldr r6, =receiver_status
+  ldrh r7, [r4]
+  mov r8, 0
   GPIOx_IDR_read D, 0
-  @ move on/off received to most significant bit in receiver_status
-  lsl r0, 7 @ most significant bit
-  ldr r1, =receiver_status
-  ldrb r2, [r1]
-  bic r2, 0b10000000
-  orr r0, r2
-  strb r0, [r1]
-  
+  ITT EQ
+  strheq r7, [r5]
+  strbeq r8, [r6] @ reset status bit index to zero
+
+  @ change control bit to indicate reading/finished
+  ldrb r1, [r6]
+  lsl r2, r0, 7
+  orr r1, r2
+  strb r1, [r6]
+
   EXTI_PR_clear_pending 0
   pop {r4-r11, lr}
   bx lr
 .size EXTI0_IRQHandler, .-EXTI0_IRQHandler
 
-@ pitch change detected
+@ clock rising edge detected
 .type EXTI3_IRQHandler, %function
 EXTI3_IRQHandler:
   push {r4-r11, lr}
 
-  @ change pitch in receiver_status
-  ldr r1, =receiver_status
-  ldrb r2, [r1]
-  bic r0, r2, 0b10000000 @ most significant bit is used for on/off
-  bic r2, 0b01111111
-  cmp r0, 7 @ check if max index has been reached
-  ITE GE
-  movge r0, 0 @ return back to index 0
-  addlt r0, 1 @ increment index
-  orr r0, r2
-  strb r0, [r1]
-  
+  ldr r4, =receiver_status
+  ldr r5, =receiver_next
+  ldrh r6, [r5] @ next note
+  ldrb r1, [r4] @ status
+  lsr r2, r1, 7 @ most significant bit is used for control
+  cmp r2, 0
+  beq handler_3_cleanup @ do not read if control is 0
+  bic r7, r1, 0b10000000 @ current bit index
+
+  @ clear (data = 0) or set (data = 1) bit in receiver next note
+  mov r8, 1
+  lsl r8, r7
+  GPIOx_IDR_read H, 1 @ read data line
+  ITE EQ
+  biceq r6, r8 @ clear at index
+  orrne r6, r8 @ set at index
+  strh r6, [r5]
+
+  add r7, 1 @ increment bit index
+  orr r7, 0b10000000
+  strb r7, [r4] @ update bit index
+handler_3_cleanup:
   EXTI_PR_clear_pending 3
   pop {r4-r11, lr}
   bx lr
@@ -178,22 +196,21 @@ delay:
 .align 2 @ align memory addresses to a word boundry (leave here)
 @ \/ memory entries go below \/
 
-@ current status of the sound being played by the receiver.
-@ most significant bit indicates on (1) or off (0),
-@ other bits indicate pitch index
+@ stores the current status of the reader
 receiver_status:
-  .byte 0b00000000
+  @ most significant bit indicates whether the control line is active or not, 
+  @ (1 = reading, 0 = finished).
+  @ other bits are used for the current bit index for reading data
+  .byte 0 
 
-@ set of frequencies in 2 bytes, index reference
-receiver_pitch_sequence:
-  .hword 220 @ 0
-  .hword 246 @ 1
-  .hword 261 @ 2
-  .hword 293 @ 3
-  .hword 329 @ 4
-  .hword 369 @ 5
-  .hword 392 @ 6
-  .hword 440 @ 7
+@ stores data required to play the current note in 2 bytes
+receiver_current:
+  .hword 0 
+@ stores data required to play the next note in 2 bytes.
+@ is read bit by bit from the sender data line, 
+@ then replaces receiver_current after sending is complete
+receiver_next:
+  .hword 0 
 
 @ --sender--
 @ all sender functionality is using the timer in tim7.S and this data
@@ -201,48 +218,47 @@ receiver_pitch_sequence:
 @ stores the current status of the sender
 sender_status:
   .byte 1 @ current offset for sender_song
-  .byte 0 @ current pitch index
 
 @ used by the sender to determine what signals to send.
 @ stored in the same format as a receiver_status.
 @ first byte indicates song length
 sender_song:
-  .byte 38 @ song length
-  .byte 0b10000000 @ on, 0
-  .byte 0          @ off
-  .byte 0b10000010 @ on, 2
-  .byte 0          @ off
-  .byte 0b10000001 @ on, 1
-  .byte 0          @ off
-  .byte 0b10000011 @ on, 3
-  .byte 0          @ off
-  .byte 0b10000010 @ on, 2
-  .byte 0          @ off
-  .byte 0b10000100 @ on, 4
-  .byte 0          @ off
-  .byte 0b10000011 @ on, 3
-  .byte 0          @ off
-  .byte 0b10000101 @ on, 5
-  .byte 0          @ off
-  .byte 0b10000100 @ on, 4
-  .byte 0          @ off
-  .byte 0b10000110 @ on, 6
-  .byte 0          @ off
-  .byte 0b10000101 @ on, 5
-  .byte 0          @ off
-  .byte 0b10000111 @ on, 7
-  .byte 0          @ off
-  .byte 0b10000110 @ on, 6
-  .byte 0          @ off
-  .byte 0b10000101 @ on, 5
-  .byte 0          @ off
-  .byte 0b10000100 @ on, 4
-  .byte 0          @ off
-  .byte 0b10000011 @ on, 3
-  .byte 0          @ off
-  .byte 0b10000010 @ on, 2
-  .byte 0          @ off
-  .byte 0b10000001 @ on, 1
-  .byte 0          @ off
-  .byte 0b10000000 @ on, 0
-  .byte 0          @ off
+  .byte 72 @ song length in bytes
+  .hword 220 @ on, 0
+  .hword 0          @ off
+  .hword 261 @ on, 2
+  .hword 0          @ off
+  .hword 246 @ on, 1
+  .hword 0          @ off
+  .hword 293 @ on, 3
+  .hword 0          @ off
+  .hword 261 @ on, 2
+  .hword 0          @ off
+  .hword 329 @ on, 4
+  .hword 0          @ off
+  .hword 293 @ on, 3
+  .hword 0          @ off
+  .hword 369 @ on, 5
+  .hword 0          @ off
+  .hword 339 @ on, 4
+  .hword 0          @ off
+  .hword 392 @ on, 6
+  .hword 0          @ off
+  .hword 369 @ on, 5
+  .hword 0          @ off
+  .hword 440 @ on, 7
+  .hword 0          @ off
+  .hword 392 @ on, 6
+  .hword 0          @ off
+  .hword 369 @ on, 5
+  .hword 0          @ off
+  .hword 329 @ on, 4
+  .hword 0          @ off
+  .hword 293 @ on, 3
+  .hword 0          @ off
+  .hword 261 @ on, 2
+  .hword 0          @ off
+  .hword 246 @ on, 1
+  .hword 0          @ off
+  .hword 220 @ on, 0
+  .hword 0          @ off
