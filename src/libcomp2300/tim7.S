@@ -111,25 +111,29 @@ TIM7_IRQHandler:
 
   ldr r0, =sender_status
   ldr r1, =sender_song
-  ldrb r5, [r0]          @ current offset in r5
-  ldrb r6, [r1]          @ song length in r6
+  ldrh r5, [r0]          @ current offset in r5
+  ldrh r6, [r1]          @ song length in r6
 
   cmp r5, r6
   ble get_note
-  mov r5, 1 @ return to beginning of song if length has been reached
+  mov r5, 2 @ return to beginning of song if length has been reached
 
 get_note:
-  ldrh r8, [r1, r5]      @ current note in r8
+  ldrb r8, [r1, r5]      @ current mode in r8
+  add r5, 1
+  cmp r8, 0
+  ITT NE
+  ldrne r9, [r1, r5]     @ current note in r9 unless delay
+  addne r5, 4
   mov r4, 0              @ current bit index in r4
-  add r5, 2
-  strb r5, [r0] @ increment current offset
+  strh r5, [r0] @ increment current offset
 
   @ set control line (start transmitting)
   GPIOx_ODR_set E, 14
 
-loop_send:
-  cmp r4, 16 @ check if all bits have been sent
-  bge finish_sending
+loop_send_mode:
+  cmp r4, 8 @ check if all bits have been sent
+  bge send_note
   GPIOx_ODR_clear E, 15 @ clear clock
   @ get bit to send
   mov r0, 1
@@ -137,16 +141,41 @@ loop_send:
   and r0, r8
   lsr r0, r4
   cmp r0, 0 @ check of 0 or 1
-  bne send_one
-send_zero:
+  bne send_one_mode
+send_zero_mode:
   GPIOx_ODR_clear E, 13 @ send 0
-  b continue_loop_send
-send_one:
+  b continue_loop_send_mode
+send_one_mode:
   GPIOx_ODR_set E, 13 @ send 1
-continue_loop_send:
+continue_loop_send_mode:
   GPIOx_ODR_set E, 15 @ set clock for read
   add r4, 1 @ increment current bit index
-  b loop_send
+  b loop_send_mode
+
+send_note:
+  cmp r8, 0
+  beq finish_sending @ delay, so note does not need to be sent
+  mov r4, 0
+loop_send_note:
+  cmp r4, 32 @ check if all bits have been sent
+  bge finish_sending
+  GPIOx_ODR_clear E, 15 @ clear clock
+  @ get bit to send
+  mov r0, 1
+  lsl r0, r4
+  and r0, r9
+  lsr r0, r4
+  cmp r0, 0 @ check of 0 or 1
+  bne send_one_note
+send_zero_note:
+  GPIOx_ODR_clear E, 13 @ send 0
+  b continue_loop_send_note
+send_one_note:
+  GPIOx_ODR_set E, 13 @ send 1
+continue_loop_send_note:
+  GPIOx_ODR_set E, 15 @ set clock for read
+  add r4, 1 @ increment current bit index
+  b loop_send_note
 
 finish_sending:
   @ clear control line (finish transmitting)
