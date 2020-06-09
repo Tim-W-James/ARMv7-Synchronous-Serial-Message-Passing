@@ -187,11 +187,11 @@ receiver_status:
 @ set of frequencies in 2 bytes, index reference
 receiver_pitch_sequence:
   .hword 220 @ 0
-  .hword 246 @ 1
-  .hword 261 @ 2
-  .hword 293 @ 3
-  .hword 329 @ 4
-  .hword 369 @ 5
+  .hword 247 @ 1
+  .hword 262 @ 2
+  .hword 294 @ 3
+  .hword 330 @ 4
+  .hword 370 @ 5
   .hword 392 @ 6
   .hword 440 @ 7
 
