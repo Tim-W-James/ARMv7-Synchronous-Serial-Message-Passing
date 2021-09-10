@@ -18,7 +18,7 @@
     <br />
     This project was created during my university studies at <b>ANU</b> in <b>2020</b> and has been transferred from the ANU GitLab server.
     <br />
-    <a href="https://github.com/Tim-W-James/ARMv7-Sine-Wave/blob/part-2/design-document.pdf"><strong>Read the design doc »</strong></a>
+    <a href="https://github.com/Tim-W-James/ARMv7-Synchronous-Serial-Message-Passing/blob/part-2/design-document.pdf"><strong>Read the design doc »</strong></a>
     <br />
 <!--     <a href="https://github.com/Tim-W-James/repo_name">View Demo</a> -->
 <!--     ·
@@ -55,7 +55,7 @@
 
 <!-- [![Product Name Screen Shot][product-screenshot]](https://example.com) -->
 
-Simple synchronous serial protocol for sending full packets of data to a receiver, created with ARMv7 assembly. Builds upon my [digital synthesizer program](https://github.com/Tim-W-James/ARMv7-Digital-Synthesizer-ADSR). Read the [design doc](https://github.com/Tim-W-James/ARMv7-Sine-Wave/blob/part-2/design-document.pdf) for implementation details.
+Simple synchronous serial protocol for sending full packets of data to a receiver, created with ARMv7 assembly. Builds upon my [digital synthesizer program](https://github.com/Tim-W-James/ARMv7-Digital-Synthesizer-ADSR). Read the [design doc](https://github.com/Tim-W-James/ARMv7-Synchronous-Serial-Message-Passing/blob/part-2/design-document.pdf) for implementation details.
 
 ### Built With
 
@@ -79,7 +79,7 @@ Simple synchronous serial protocol for sending full packets of data to a receive
 
 Email: [tim.jameswork9800@gmail.com](mailto:tim.jameswork9800@gmail.com "tim.jameswork9800@gmail.com")
 
-Project Link: [https://github.com/Tim-W-James/ARMv7-Sine-Wave](https://github.com/Tim-W-James/ARMv7-Sine-Wave)
+Project Link: [https://github.com/Tim-W-James/ARMv7-Synchronous-Serial-Message-Passing](https://github.com/Tim-W-James/ARMv7-Synchronous-Serial-Message-Passing)
 
 
 
